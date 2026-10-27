@@ -1,16 +1,24 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 let vercelBlob = null;
 try {
     vercelBlob = require('@vercel/blob');
-} catch (e) {
-    // @vercel/blob fallback
-}
+} catch (e) {}
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+// Sur Vercel Serverless, seul /tmp est accessible en écriture !
+const DATA_DIR = path.join(os.tmpdir(), 'mystream-data');
 const METADATA_FILE = path.join(DATA_DIR, 'metadata.json');
 const METADATA_KEY = 'mystream-metadata.json';
+
+try {
+    if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+} catch (e) {
+    // Ne jamais crasher au démarrage du module
+}
 
 const DEMO_CONTENT = `#EXTM3U
 #EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg" group-title="Films Animation",Big Buck Bunny [1080p]
@@ -47,28 +55,31 @@ function isVercelBlobConfigured() {
     return Boolean(process.env.BLOB_READ_WRITE_TOKEN && vercelBlob);
 }
 
-// Lire les métadonnées
+// Lire les métadonnées avec tolérance totale aux pannes
 async function getMetadata() {
     if (isVercelBlobConfigured()) {
         try {
             const blobs = await vercelBlob.list({ prefix: METADATA_KEY });
-            const metaBlob = blobs.blobs.find(b => b.pathname === METADATA_KEY);
-            if (metaBlob) {
+            const metaBlob = (blobs && blobs.blobs) ? blobs.blobs.find(b => b.pathname === METADATA_KEY) : null;
+            if (metaBlob && metaBlob.url) {
                 const res = await fetch(metaBlob.url);
-                return await res.json();
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json && json.files) return json;
+                }
             }
         } catch (e) {
-            console.warn('Vercel Blob read error:', e.message);
+            console.warn('Vercel Blob read notice:', e.message);
         }
     }
 
-    // Fallback fichier local
     try {
         if (fs.existsSync(METADATA_FILE)) {
             const data = fs.readFileSync(METADATA_FILE, 'utf-8');
-            return JSON.parse(data);
+            const parsed = JSON.parse(data);
+            if (parsed && parsed.files) return parsed;
         }
-    } catch {}
+    } catch (e) {}
 
     return defaultMetadata;
 }
@@ -84,40 +95,42 @@ async function saveMetadata(metadata) {
             });
             return;
         } catch (e) {
-            console.warn('Vercel Blob save error:', e.message);
+            console.warn('Vercel Blob save notice:', e.message);
         }
     }
 
     try {
         if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
         fs.writeFileSync(METADATA_FILE, JSON.stringify(metadata, null, 2), 'utf-8');
-    } catch {}
+    } catch (e) {}
 }
 
 // Upload un fichier M3U
 async function uploadM3U(filename, content) {
+    const safeName = (filename || 'playlist.m3u').replace(/[^a-zA-Z0-9.-]/g, '_');
+    
     if (isVercelBlobConfigured()) {
         try {
-            const key = `m3u/${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const key = `m3u/${Date.now()}-${safeName}`;
             const blob = await vercelBlob.put(key, content, {
                 access: 'public',
                 contentType: 'text/plain'
             });
-            return blob;
+            if (blob && blob.url) return blob;
         } catch (e) {
-            console.warn('Vercel Blob upload failed, falling back:', e.message);
+            console.warn('Vercel Blob upload notice:', e.message);
         }
     }
 
-    const key = `memory:${Date.now()}-${filename}`;
+    const key = `memory:${Date.now()}-${safeName}`;
     memoryBlobs.set(key, content);
 
     try {
         const uploadDir = path.join(DATA_DIR, 'uploads');
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-        const filePath = path.join(uploadDir, `${Date.now()}-${filename}`);
+        const filePath = path.join(uploadDir, `${Date.now()}-${safeName}`);
         fs.writeFileSync(filePath, content, 'utf-8');
-    } catch {}
+    } catch (e) {}
 
     return {
         url: key,
@@ -128,15 +141,17 @@ async function uploadM3U(filename, content) {
 
 // Lire un fichier M3U
 async function readM3U(url) {
-    if (url === 'memory:demo-catalogue') {
+    if (!url || url === 'memory:demo-catalogue') {
         return DEMO_CONTENT;
     }
     if (memoryBlobs.has(url)) {
         return memoryBlobs.get(url);
     }
     if (url.startsWith('http://') || url.startsWith('https://')) {
-        const response = await fetch(url);
-        return await response.text();
+        try {
+            const response = await fetch(url);
+            if (response.ok) return await response.text();
+        } catch (e) {}
     }
     return DEMO_CONTENT;
 }
@@ -146,11 +161,9 @@ async function deleteM3U(url) {
     if (isVercelBlobConfigured() && (url.startsWith('http://') || url.startsWith('https://'))) {
         try {
             await vercelBlob.del(url);
-        } catch (e) {
-            console.warn('Vercel Blob delete error:', e.message);
-        }
+        } catch (e) {}
     }
     memoryBlobs.delete(url);
 }
 
-module.exports = { getMetadata, saveMetadata, uploadM3U, readM3U, deleteM3U };
+module.exports = { getMetadata, saveMetadata, uploadM3U, readM3U, deleteM3U, DEMO_CONTENT };

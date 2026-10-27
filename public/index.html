@@ -13,6 +13,7 @@
             <input type="text" id="searchInput" placeholder="🔍 Rechercher...">
         </div>
         <div class="user-actions" style="display:flex;gap:10px;align-items:center;">
+            <button class="btn-import-header" id="quickImportBtn" title="Importer une playlist M3U">📁 Importer M3U</button>
             <button class="btn-xtream-header" id="openXtreamBtn" title="Lecteur Xtream Codes">⚡ Xtream Codes</button>
             <a href="/admin.html" class="btn-refresh" title="Administration" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">⚙️</a>
             <button class="btn-refresh" id="refreshBtn" title="Rafraîchir">🔄</button>
@@ -206,6 +207,40 @@
             </div>
             <div class="series-seasons-bar" id="seriesSeasonsBar"></div>
             <div class="series-episodes-list" id="seriesEpisodesList"></div>
+        </div>
+    </div>
+
+    <!-- Modal Import Rapide M3U -->
+    <div class="xtream-modal" id="importModal">
+        <div class="xtream-container" style="max-width: 600px; height: auto; max-height: 90vh;">
+            <div class="xtream-header">
+                <div class="xtream-header-title">
+                    <h2>📁 Importer une Playlist M3U</h2>
+                </div>
+                <button class="close-btn" id="closeImport">✕</button>
+            </div>
+            <div class="xtream-body" style="padding: 24px;">
+                <div class="form-group">
+                    <label for="m3uUrlInput">Charger via URL (.m3u, .m3u8)</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="url" id="m3uUrlInput" placeholder="https://example.com/playlist.m3u" style="flex:1;">
+                        <button class="btn-xtream-connect" id="btnLoadUrl" style="padding:10px 16px;white-space:nowrap;">Charger</button>
+                    </div>
+                </div>
+
+                <div style="text-align:center;margin:15px 0;color:#64748b;">— OU —</div>
+
+                <div class="upload-area" id="webAppUploadArea" style="padding: 30px 15px; border-radius: 12px; border: 2px dashed rgba(168, 85, 247, 0.4); text-align:center; cursor:pointer;">
+                    <div style="font-size:36px;margin-bottom:8px;">📂</div>
+                    <p style="font-size:14px;color:#cbd5e1;">Glissez-déposez un fichier <strong>.m3u</strong> ou <strong>.m3u8</strong></p>
+                    <label class="btn-xtream-demo" style="display:inline-block;margin-top:12px;cursor:pointer;">
+                        Parcourir les fichiers
+                        <input type="file" id="webAppFileInput" accept=".m3u,.m3u8" hidden>
+                    </label>
+                </div>
+
+                <div id="importModalStatus" style="margin-top:15px;display:none;padding:10px;border-radius:8px;font-size:13px;"></div>
+            </div>
         </div>
     </div>
 

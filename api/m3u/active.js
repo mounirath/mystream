@@ -1,38 +1,58 @@
-const { getMetadata, readM3U } = require('../_lib/storage');
+const { getMetadata, readM3U, DEMO_CONTENT } = require('../_lib/storage');
+
+// Vercel Serverless Function Payload Limit est strictement de 4.5 Mo
+const MAX_SAFE_PAYLOAD_BYTES = 3.5 * 1024 * 1024; // 3.5 Mo
 
 module.exports = async function handler(req, res) {
-    if (req.method !== 'GET') {
-        return res.status(405).json({ error: 'Method not allowed' });
+    if (req.method === 'OPTIONS') {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        return res.status(200).end();
     }
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
 
     try {
-        const metadata = await getMetadata();
+        const metadata = await getMetadata().catch(() => null);
         
-        if (!metadata.activeId) {
-            return res.status(404).json({ error: 'Aucun fichier actif' });
+        if (metadata && metadata.files && metadata.files.length > 0) {
+            const activeId = metadata.activeId || metadata.files[0].id;
+            const file = metadata.files.find(f => f.id === activeId) || metadata.files[0];
+            
+            if (file) {
+                let content = await readM3U(file.url).catch(() => DEMO_CONTENT);
+                if (!content) content = DEMO_CONTENT;
+
+                const totalItems = (content.match(/#EXTINF/g) || []).length;
+
+                // Protéger contre le crash Vercel 500 (limite 4.5 Mo de payload AWS Lambda)
+                if (content.length > MAX_SAFE_PAYLOAD_BYTES) {
+                    const cut = content.substring(0, MAX_SAFE_PAYLOAD_BYTES);
+                    const lastNl = cut.lastIndexOf('\n');
+                    content = cut.substring(0, lastNl > 0 ? lastNl : cut.length);
+                }
+
+                return res.status(200).json({
+                    name: file.name || 'Catalogue MyStream',
+                    content: content,
+                    itemCount: totalItems
+                });
+            }
         }
 
-        const file = metadata.files.find(f => f.id === metadata.activeId);
-        if (!file) {
-            return res.status(404).json({ error: 'Fichier actif introuvable' });
-        }
-
-        // Lire le contenu du M3U
-        const content = await readM3U(file.url);
-
-        res.status(200).json({
-            name: file.name,
-            content,
-            itemCount: file.itemCount
+        // Fallback démo garanti
+        return res.status(200).json({
+            name: 'Démo Catalogue (Films & Séries)',
+            content: DEMO_CONTENT,
+            itemCount: 6
         });
     } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-// Cache 60s pour performance
-module.exports.config = {
-    api: {
-        responseLimit: '50mb'
+        console.warn('Erreur active.js évitée:', error.message);
+        return res.status(200).json({
+            name: 'Démo Catalogue (Films & Séries)',
+            content: DEMO_CONTENT,
+            itemCount: 6
+        });
     }
 };

@@ -21,40 +21,78 @@ let xtreamState = {
     activeSeason: 1
 };
 
+const EMBEDDED_DEMO_M3U = `#EXTM3U
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg" group-title="Films Animation",Big Buck Bunny [1080p]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg" group-title="Films Animation",Elephants Dream [720p]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg" group-title="Films Animation",Sintel - The Durian Project [1080p]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg" group-title="Films Sci-Fi",Tears of Steel [4K]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg" group-title="Films Action",For Bigger Blazes [1080p]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+#EXTINF:-1 tvg-logo="https://test-streams.mux.dev/test_001/stream.png" group-title="Série Stream Test - Saison 1",Big Buck Bunny HLS [1080p]
+https://test-streams.mux.dev/test_001/stream.m3u8`;
+
 // ==========================================
-// M3U & Catalogue Principal
+// M3U & Catalogue Principal (Client-First)
 // ==========================================
 
 async function loadActiveM3U() {
-    try {
-        const loadingScreen = document.getElementById('loadingScreen');
-        const welcomeScreen = document.getElementById('welcomeScreen');
-        const contentGrid = document.getElementById('contentGrid');
+    const loadingScreen = document.getElementById('loadingScreen');
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    const contentGrid = document.getElementById('contentGrid');
 
-        if (welcomeScreen) welcomeScreen.style.display = 'none';
-        if (loadingScreen) loadingScreen.style.display = 'flex';
-        
+    if (welcomeScreen) welcomeScreen.style.display = 'none';
+    if (loadingScreen) loadingScreen.style.display = 'flex';
+
+    let contentToParse = null;
+    let playlistName = 'Catalogue';
+
+    try {
         const response = await fetch('/api/m3u/active');
-        
-        if (!response.ok) {
-            throw new Error('Aucun fichier actif');
+        if (response.ok) {
+            const data = await response.json();
+            if (data && data.content) {
+                contentToParse = data.content;
+                playlistName = data.name || playlistName;
+                try {
+                    localStorage.setItem('mystream_active_playlist', JSON.stringify({ name: playlistName, content: contentToParse }));
+                } catch (e) {}
+            }
         }
-        
-        const data = await response.json();
-        allItems = parseM3U(data.content);
-        
-        console.log(`✅ ${allItems.length} éléments chargés depuis ${data.name}`);
-        
-        if (loadingScreen) loadingScreen.style.display = 'none';
-        if (contentGrid) contentGrid.style.display = 'grid';
-        
-        renderContent();
-        renderGroups();
-    } catch (error) {
-        if (document.getElementById('loadingScreen')) document.getElementById('loadingScreen').style.display = 'none';
-        if (document.getElementById('welcomeScreen')) document.getElementById('welcomeScreen').style.display = 'flex';
-        console.error('Erreur chargement M3U:', error);
+    } catch (e) {
+        console.warn('API m3u/active non joignable, tentative de chargement local...');
     }
+
+    // Si l'API échoue ou renvoie vide, vérifier le cache local
+    if (!contentToParse) {
+        try {
+            const cached = localStorage.getItem('mystream_active_playlist');
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (parsed.content) {
+                    contentToParse = parsed.content;
+                    playlistName = parsed.name || playlistName;
+                }
+            }
+        } catch (e) {}
+    }
+
+    // Si toujours rien, charger la démo embarquée
+    if (!contentToParse) {
+        contentToParse = EMBEDDED_DEMO_M3U;
+        playlistName = 'Démo Catalogue (Films & Séries)';
+    }
+
+    allItems = parseM3U(contentToParse);
+
+    if (loadingScreen) loadingScreen.style.display = 'none';
+    if (contentGrid) contentGrid.style.display = 'grid';
+
+    renderContent();
+    renderGroups();
 }
 
 function parseM3U(content) {
@@ -847,6 +885,146 @@ document.addEventListener('DOMContentLoaded', () => {
         renderXtreamGrid();
     });
 
+    // Import Rapide M3U (Client-side Web App)
+    document.getElementById('quickImportBtn')?.addEventListener('click', openImportModal);
+    document.getElementById('closeImport')?.addEventListener('click', closeImportModal);
+    document.getElementById('importModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'importModal') closeImportModal();
+    });
+
+    document.getElementById('btnLoadUrl')?.addEventListener('click', () => {
+        const url = (document.getElementById('m3uUrlInput')?.value || '').trim();
+        if (url) loadM3UFromUrl(url);
+    });
+
+    const webAppFileInput = document.getElementById('webAppFileInput');
+    if (webAppFileInput) {
+        webAppFileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleClientFileUpload(e.target.files[0]);
+            }
+        });
+    }
+
+    const dropArea = document.getElementById('webAppUploadArea');
+    if (dropArea) {
+        ['dragenter', 'dragover'].forEach(name => {
+            dropArea.addEventListener(name, (e) => {
+                e.preventDefault();
+                dropArea.style.borderColor = '#a855f7';
+                dropArea.style.background = 'rgba(168, 85, 247, 0.1)';
+            });
+        });
+        ['dragleave', 'drop'].forEach(name => {
+            dropArea.addEventListener(name, (e) => {
+                e.preventDefault();
+                dropArea.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+                dropArea.style.background = 'transparent';
+            });
+        });
+        dropArea.addEventListener('drop', (e) => {
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleClientFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
     // Chargement initial du catalogue M3U
     loadActiveM3U();
 });
+
+// ==========================================
+// Fonctions d'Import Client (Web App)
+// ==========================================
+
+function openImportModal() {
+    const modal = document.getElementById('importModal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeImportModal() {
+    const modal = document.getElementById('importModal');
+    if (modal) modal.classList.remove('active');
+    showImportStatus('');
+}
+
+function showImportStatus(msg, type = '') {
+    const el = document.getElementById('importModalStatus');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+    if (type === 'error') {
+        el.style.background = 'rgba(239, 68, 68, 0.2)';
+        el.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+        el.style.color = '#ef4444';
+    } else if (type === 'success') {
+        el.style.background = 'rgba(34, 197, 94, 0.2)';
+        el.style.border = '1px solid rgba(34, 197, 94, 0.5)';
+        el.style.color = '#22c55e';
+    } else {
+        el.style.background = 'rgba(255, 255, 255, 0.1)';
+        el.style.color = '#fff';
+    }
+}
+
+async function loadM3UFromUrl(url) {
+    if (!url) return;
+    showImportStatus('Téléchargement de la playlist en cours...', '');
+    try {
+        let content = '';
+        try {
+            const res = await fetch(url);
+            if (res.ok) content = await res.text();
+        } catch (e) {
+            // Tentative via proxy si problème CORS
+            const proxyRes = await fetch(`/api/xtream/proxy?url=${encodeURIComponent(url)}`);
+            if (proxyRes.ok) content = await proxyRes.text();
+        }
+
+        if (!content || !content.includes('#EXTINF')) {
+            throw new Error('Impossible de lire les flux M3U depuis cette URL (vérifiez le lien)');
+        }
+
+        const name = url.split('/').pop().split('?')[0] || 'Playlist URL';
+        applyM3UContent(name, content);
+    } catch (e) {
+        showImportStatus(`❌ Erreur: ${e.message}`, 'error');
+    }
+}
+
+function handleClientFileUpload(file) {
+    if (!file) return;
+    showImportStatus('Lecture du fichier en local...', '');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const text = e.target.result;
+        if (!text || !text.includes('#EXTINF')) {
+            showImportStatus('Ce fichier ne contient pas de directive #EXTINF valide.', 'error');
+            return;
+        }
+        applyM3UContent(file.name, text);
+    };
+    reader.onerror = () => showImportStatus('Erreur de lecture du fichier', 'error');
+    reader.readAsText(file);
+}
+
+function applyM3UContent(name, text) {
+    allItems = parseM3U(text);
+    try {
+        localStorage.setItem('mystream_active_playlist', JSON.stringify({ name, content: text }));
+    } catch (e) {}
+
+    // Sauvegarde en tâche de fond sur le serveur si disponible
+    fetch('/api/admin/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: name, content: text })
+    }).catch(() => {});
+
+    renderContent();
+    renderGroups();
+    showImportStatus(`✅ ${allItems.length} flux chargés dans la Web App !`, 'success');
+    setTimeout(() => {
+        closeImportModal();
+    }, 1200);
+}

@@ -5,10 +5,5 @@
     { "source": "/api/admin/files/:id", "destination": "/api/admin/delete?id=:id" },
     { "source": "/api/admin/delete/:id", "destination": "/api/admin/delete?id=:id" },
     { "source": "/admin", "destination": "/admin.html" }
-  ],
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 30
-    }
-  }
+  ]
 }
