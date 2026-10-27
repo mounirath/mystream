@@ -1,0 +1,5 @@
+{
+  "name": "MyStream",
+  "description": "Application de streaming M3U avec lecteur HLS et panneau d'administration",
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

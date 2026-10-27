@@ -12,7 +12,8 @@
         <div class="search-bar">
             <input type="text" id="searchInput" placeholder="🔍 Rechercher...">
         </div>
-        <div class="user-actions">
+        <div class="user-actions" style="display:flex;gap:10px;align-items:center;">
+            <a href="/admin.html" class="btn-refresh" title="Administration" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">⚙️</a>
             <button class="btn-refresh" id="refreshBtn" title="Rafraîchir">🔄</button>
         </div>
     </header>
@@ -36,7 +37,7 @@
             <div class="welcome-content">
                 <div class="welcome-icon">🎬</div>
                 <h1>Bienvenue sur MyStream</h1>
-                <p>Aucun fichier M3U actif. Contactez l'administrateur pour activer un fichier.</p>
+                <p>Aucun fichier M3U actif. <a href="/admin.html" style="color:#a855f7;">Accédez à l'administration</a> pour importer ou activer une playlist.</p>
                 <button class="btn-retry" id="retryBtn">🔄 Réessayer</button>
             </div>
         </div>
