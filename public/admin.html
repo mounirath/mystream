@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 MyStream Admin</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <header class="admin-header">
+        <div class="logo">🔧 MyStream Admin</div>
+        <a href="/" class="btn-back">← Retour au site</a>
+    </header>
+
+    <main class="admin-main">
+        <section class="upload-section">
+            <h2>📤 Upload fichier M3U</h2>
+            <form id="uploadForm">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <p>Glissez-déposez un fichier M3U ici</p>
+                    <p class="upload-or">ou</p>
+                    <label class="btn-upload">
+                        Choisir un fichier
+                        <input type="file" id="m3uFile" accept=".m3u,.m3u8" hidden>
+                    </label>
+                </div>
+                <div class="upload-status" id="uploadStatus"></div>
+            </form>
+        </section>
+
+        <section class="files-section">
+            <h2>📋 Fichiers M3U</h2>
+            <div class="files-list" id="filesList">
+                <div class="loading">Chargement...</div>
+            </div>
+        </section>
+    </main>
+
+    <script src="admin.js"></script>
+</body>
+</html>
