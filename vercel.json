@@ -1,18 +1,10 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "public/**",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/public/$1" }
+  "rewrites": [
+    { "source": "/api/admin/activate/:id", "destination": "/api/admin/activate?id=:id" },
+    { "source": "/api/admin/files/:id", "destination": "/api/admin/delete?id=:id" },
+    { "source": "/api/admin/delete/:id", "destination": "/api/admin/delete?id=:id" },
+    { "source": "/admin", "destination": "/admin.html" }
   ],
   "functions": {
     "api/**/*.js": {
