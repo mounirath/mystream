@@ -3,8 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎬 MyStream</title>
+    <title>🎬 MyStream - Streaming M3U & Xtream IPTV</title>
+    <meta name="description" content="Application mobile et web de streaming M3U et IPTV Xtream Codes avec lecteur HLS.">
     <link rel="stylesheet" href="style.css">
+
+    <!-- PWA / Android WebAPK Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MyStream">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 </head>
 <body>
     <header class="header">
@@ -13,6 +25,7 @@
             <input type="text" id="searchInput" placeholder="🔍 Rechercher...">
         </div>
         <div class="user-actions" style="display:flex;gap:10px;align-items:center;">
+            <button class="btn-apk-install" id="installApkBtn" title="Installer l'application Android (APK)">📲 Installer APK</button>
             <button class="btn-import-header" id="quickImportBtn" title="Importer une playlist M3U">📁 Importer M3U</button>
             <button class="btn-xtream-header" id="openXtreamBtn" title="Lecteur Xtream Codes">⚡ Xtream Codes</button>
             <a href="/admin.html" class="btn-refresh" title="Administration" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">⚙️</a>
@@ -240,6 +253,54 @@
                 </div>
 
                 <div id="importModalStatus" style="margin-top:15px;display:none;padding:10px;border-radius:8px;font-size:13px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Installation APK / Android -->
+    <div class="xtream-modal" id="apkModal">
+        <div class="xtream-container" style="max-width: 650px; height: auto; max-height: 90vh;">
+            <div class="xtream-header">
+                <div class="xtream-header-title">
+                    <h2>📲 Application Android / APK MyStream</h2>
+                </div>
+                <button class="close-btn" id="closeApkModal">✕</button>
+            </div>
+            <div class="xtream-body" style="padding: 24px;">
+                <div style="text-align:center;margin-bottom:20px;">
+                    <img src="/icon-192.png" alt="MyStream Logo" style="width:80px;height:80px;border-radius:20px;box-shadow:0 8px 25px rgba(0,0,0,0.5);">
+                    <h3 style="font-size:20px;margin-top:10px;color:#fff;">MyStream sur Android & TV</h3>
+                    <p style="font-size:13px;color:#94a3b8;margin-top:4px;">Installez MyStream comme une vraie application native Android (WebAPK) avec icône sur l'écran d'accueil, plein écran et lecteur fluide.</p>
+                </div>
+
+                <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;margin-bottom:16px;">
+                    <h4 style="color:#10b981;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                        <span>⚡ Méthode 1 : Installation Directe (Recommandé)</span>
+                    </h4>
+                    <p style="font-size:13px;color:#cbd5e1;line-height:1.4;margin-bottom:12px;">
+                        Android génère et installe automatiquement le fichier <strong>APK natif (WebAPK)</strong> de MyStream en 1 clic :
+                    </p>
+                    <button class="btn-apk-install" id="btnTriggerInstall" style="width:100%;justify-content:center;padding:12px;font-size:14px;">
+                        🚀 Installer l'application sur cet appareil
+                    </button>
+                    <p id="apkInstallNotice" style="font-size:11px;color:#94a3b8;margin-top:8px;text-align:center;">
+                        (Si le bouton n'apparaît pas : ouvrez le menu <strong>⋮</strong> de Chrome sur votre téléphone puis sélectionnez <strong>« Installer l'application »</strong>)
+                    </p>
+                </div>
+
+                <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px;">
+                    <h4 style="color:#38bdf8;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                        <span>📦 Méthode 2 : Télécharger le package APK autonome</span>
+                    </h4>
+                    <p style="font-size:13px;color:#cbd5e1;line-height:1.4;margin-bottom:10px;">
+                        Pour créer un fichier <strong>.APK autonome</strong> distribuable (pour clé USB, Box TV, ou Google Play) :
+                    </p>
+                    <div style="font-size:12px;color:#94a3b8;line-height:1.6;background:rgba(0,0,0,0.3);padding:10px;border-radius:8px;">
+                        1. Allez sur l'outil officiel Google/Microsoft : <strong style="color:#fff;">pwabuilder.com</strong><br>
+                        2. Collez l'URL de votre application MyStream déployée<br>
+                        3. Cliquez sur <strong>Package for Android</strong> pour générer directement votre fichier <strong>.apk</strong> !
+                    </div>
+                </div>
             </div>
         </div>
     </div>

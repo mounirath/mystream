@@ -929,6 +929,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Installation APK / Android (WebAPK)
+    document.getElementById('installApkBtn')?.addEventListener('click', openApkModal);
+    document.getElementById('closeApkModal')?.addEventListener('click', closeApkModal);
+    document.getElementById('btnTriggerInstall')?.addEventListener('click', triggerApkInstall);
+    document.getElementById('apkModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'apkModal') closeApkModal();
+    });
+
     // Chargement initial du catalogue M3U
     loadActiveM3U();
 });
@@ -1027,4 +1035,56 @@ function applyM3UContent(name, text) {
     setTimeout(() => {
         closeImportModal();
     }, 1200);
+}
+
+// ==========================================
+// PWA & Installation Android (WebAPK)
+// ==========================================
+
+let deferredInstallPrompt = null;
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.warn('Service Worker non enregistré:', err);
+        });
+    });
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    console.log('Installation WebAPK prête');
+    const notice = document.getElementById('apkInstallNotice');
+    if (notice) notice.textContent = '✅ Votre appareil Android est prêt pour l\'installation immédiate !';
+});
+
+window.addEventListener('appinstalled', () => {
+    console.log('Application MyStream installée !');
+    deferredInstallPrompt = null;
+    closeApkModal();
+    alert('🎉 MyStream a été installée avec succès sur votre écran d\'accueil !');
+});
+
+function openApkModal() {
+    const modal = document.getElementById('apkModal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeApkModal() {
+    const modal = document.getElementById('apkModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function triggerApkInstall() {
+    if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+            deferredInstallPrompt = null;
+            closeApkModal();
+        }
+    } else {
+        alert('ℹ️ Pour installer l\'application sur Android :\n\n1. Appuyez sur le menu ⋮ (trois points) en haut à droite de Chrome.\n2. Sélectionnez "Installer l\'application" ou "Ajouter à l\'écran d\'accueil".\n\nAndroid créera automatiquement le fichier APK natif.');
+    }
 }
