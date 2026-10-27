@@ -79,15 +79,30 @@
                     <span id="playerMetaBadge" class="player-badge">Direct</span>
                 </div>
                 <div class="player-controls">
+                    <div class="quality-selector" id="audioSelector" style="display:none;">
+                        <button class="quality-btn-player" id="audioToggle">🔊 <span id="currentAudioLabel">Audio</span></button>
+                        <div class="quality-menu" id="audioMenu"></div>
+                    </div>
                     <div class="quality-selector" id="qualitySelector">
                         <button class="quality-btn-player" id="qualityToggle">🎚️ <span id="currentQualityLabel">Auto</span></button>
                         <div class="quality-menu" id="qualityMenu"></div>
                     </div>
+                    <button class="quality-btn-player" id="pipBtn" title="Picture in Picture">📺 PiP</button>
+                    <button class="quality-btn-player" id="fullscreenBtn" title="Plein écran">⛶</button>
                     <button class="close-btn" id="closePlayer">✕</button>
                 </div>
             </div>
-            <div class="player-wrapper">
+            <div class="player-wrapper" style="position:relative;">
                 <video id="videoPlayer" controls autoplay playsinline></video>
+                <div id="playerErrorBanner" class="player-error-banner" style="display:none;">
+                    <div style="font-size:28px;margin-bottom:8px;">⚠️</div>
+                    <h4 style="color:#fff;font-size:15px;margin-bottom:6px;">Erreur de lecture du flux HLS</h4>
+                    <p id="playerErrorMessage" style="font-size:12px;color:#cbd5e1;line-height:1.4;margin-bottom:14px;">Le flux HLS n'a pas pu être chargé directement (protection CORS ou flux HTTP non chiffré).</p>
+                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                        <button id="btnRetryProxy" class="btn-xtream-connect" style="padding:8px 16px;font-size:12px;">🔄 Relancer via Proxy anti-CORS</button>
+                        <button id="btnOpenDirect" class="btn-xtream-demo" style="padding:8px 16px;font-size:12px;">🔗 Ouvrir le flux</button>
+                    </div>
+                </div>
             </div>
             <div class="player-footer" id="playerFooter">
                 <span id="streamUrlDisplay" class="stream-url-text"></span>

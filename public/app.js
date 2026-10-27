@@ -233,18 +233,31 @@ function toggleFavorite(e, encodedUrl) {
 // Lecteur Vidéo Intégré (HLS & Direct)
 // ==========================================
 
-function playItem(item, badgeText = '') {
+let currentStreamItem = null;
+
+function playItem(item, badgeText = '', forceProxy = false) {
     const modal = document.getElementById('playerModal');
     const video = document.getElementById('videoPlayer');
     const titleEl = document.getElementById('playerTitle');
     const badgeEl = document.getElementById('playerMetaBadge');
     const urlEl = document.getElementById('streamUrlDisplay');
+    const errorBanner = document.getElementById('playerErrorBanner');
+    const audioSelector = document.getElementById('audioSelector');
+
+    currentStreamItem = item;
+    if (errorBanner) errorBanner.style.display = 'none';
+    if (audioSelector) audioSelector.style.display = 'none';
 
     if (titleEl) titleEl.textContent = item.title;
     if (badgeEl) {
-        badgeEl.textContent = badgeText || (item.type === 'serie' ? 'Série' : (item.quality ? qualityLabel(item.quality) : 'Lecture'));
+        badgeEl.textContent = badgeText || (item.type === 'serie' ? 'Série' : (item.quality ? qualityLabel(item.quality) : 'Lecture HLS'));
     }
-    if (urlEl) urlEl.textContent = item.url;
+
+    let url = item.url;
+    if (forceProxy) {
+        url = `/api/xtream/proxy?url=${encodeURIComponent(item.url)}`;
+    }
+    if (urlEl) urlEl.textContent = url;
     
     modal.classList.add('active');
     
@@ -253,27 +266,54 @@ function playItem(item, badgeText = '') {
         hlsInstance = null;
     }
 
-    const url = item.url;
     const isHLS = url.includes('.m3u8') || url.includes('m3u8');
     
     if (isHLS && Hls.isSupported()) {
         hlsInstance = new Hls({
             enableWorker: true,
             lowLatencyMode: true,
-            backBufferLength: 90
+            backBufferLength: 90,
+            capLevelToPlayerSize: true,
+            manifestLoadingTimeOut: 15000,
+            manifestLoadingMaxRetry: 4,
+            levelLoadingTimeOut: 15000,
+            levelLoadingMaxRetry: 4,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 5
         });
+
         hlsInstance.loadSource(url);
         hlsInstance.attachMedia(video);
+
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-            video.play().catch(e => console.warn('Autoplay bloqué:', e));
+            video.play().catch(e => console.warn('Lecture automatique bloquée:', e));
             loadHLSQualities();
+            loadHLSAudioTracks();
         });
+
+        hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+            loadHLSAudioTracks();
+        });
+
+        hlsInstance.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+            const level = hlsInstance.levels[data.level];
+            if (hlsInstance.autoLevelEnabled && level) {
+                const label = document.getElementById('currentQualityLabel');
+                if (label) label.textContent = `Auto (${level.height ? level.height + 'p' : 'HD'})`;
+            }
+        });
+
         hlsInstance.on(Hls.Events.ERROR, (event, data) => {
             if (data.fatal) {
                 switch(data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
-                        console.warn('Erreur réseau HLS, tentative de récupération...');
+                        console.warn('Erreur réseau HLS, essai de récupération...');
                         hlsInstance.startLoad();
+                        setTimeout(() => {
+                            if (video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE || video.error) {
+                                showPlayerError(url, 'Impossible de charger les segments du flux (CORS ou flux hors-ligne)');
+                            }
+                        }, 4000);
                         break;
                     case Hls.ErrorTypes.MEDIA_ERROR:
                         console.warn('Erreur média HLS, récupération...');
@@ -281,14 +321,49 @@ function playItem(item, badgeText = '') {
                         break;
                     default:
                         hlsInstance.destroy();
-                        video.src = url;
+                        showPlayerError(url, 'Format de flux HLS non supporté directement.');
                         break;
                 }
             }
         });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Support HLS natif pour Safari (iOS & macOS)
+        video.src = url;
+        video.addEventListener('loadedmetadata', () => {
+            video.play().catch(e => console.warn('Lecture automatique Safari bloquée:', e));
+        });
+        video.onerror = () => {
+            showPlayerError(url, 'Erreur de lecture native du flux HLS sur ce navigateur.');
+        };
     } else {
         video.src = url;
-        video.play().catch(e => console.warn('Autoplay bloqué:', e));
+        video.play().catch(e => console.warn('Lecture automatique bloquée:', e));
+        video.onerror = () => {
+            showPlayerError(url, 'Le navigateur n\'a pas pu lire cette vidéo directement.');
+        };
+    }
+}
+
+function showPlayerError(url, message) {
+    const banner = document.getElementById('playerErrorBanner');
+    const msgEl = document.getElementById('playerErrorMessage');
+    if (!banner) return;
+    if (msgEl) msgEl.textContent = message || 'Erreur lors du chargement du flux HLS.';
+    banner.style.display = 'block';
+
+    const btnProxy = document.getElementById('btnRetryProxy');
+    if (btnProxy) {
+        btnProxy.onclick = () => {
+            banner.style.display = 'none';
+            if (currentStreamItem) playItem(currentStreamItem, 'Flux Sécurisé (Proxy)', true);
+        };
+    }
+
+    const btnDirect = document.getElementById('btnOpenDirect');
+    if (btnDirect) {
+        btnDirect.onclick = () => {
+            window.open(url, '_blank');
+        };
     }
 }
 
@@ -297,6 +372,11 @@ function loadHLSQualities() {
     const levels = hlsInstance.levels || [];
     const menu = document.getElementById('qualityMenu');
     if (!menu) return;
+
+    if (levels.length <= 1) {
+        menu.innerHTML = `<div class="quality-option selected" data-level="-1">⚡ Auto (Source unique)</div>`;
+        return;
+    }
 
     menu.innerHTML = `
         <div class="quality-option selected" data-level="-1">⚡ Auto</div>
@@ -318,9 +398,42 @@ function loadHLSQualities() {
     });
 }
 
+function loadHLSAudioTracks() {
+    if (!hlsInstance) return;
+    const tracks = hlsInstance.audioTracks || [];
+    const selector = document.getElementById('audioSelector');
+    const menu = document.getElementById('audioMenu');
+    if (!selector || !menu) return;
+
+    if (tracks.length <= 1) {
+        selector.style.display = 'none';
+        return;
+    }
+
+    selector.style.display = 'block';
+    menu.innerHTML = tracks.map((track, idx) => `
+        <div class="quality-option ${track.id === hlsInstance.audioTrack ? 'selected' : ''}" data-track="${track.id}">
+            🔊 ${track.name || track.lang || 'Piste ' + (idx + 1)}
+        </div>
+    `).join('');
+
+    menu.querySelectorAll('.quality-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+            const trackId = parseInt(opt.dataset.track);
+            hlsInstance.audioTrack = trackId;
+            menu.querySelectorAll('.quality-option').forEach(o => o.classList.remove('selected'));
+            opt.classList.add('selected');
+            const label = document.getElementById('currentAudioLabel');
+            if (label) label.textContent = opt.textContent.replace('🔊 ', '');
+        });
+    });
+}
+
 function closePlayer() {
     document.getElementById('playerModal').classList.remove('active');
     const video = document.getElementById('videoPlayer');
+    const banner = document.getElementById('playerErrorBanner');
+    if (banner) banner.style.display = 'none';
     if (video) {
         video.pause();
         video.src = '';
@@ -807,11 +920,47 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('qualityToggle')?.addEventListener('click', (e) => {
         e.stopPropagation();
         document.getElementById('qualityMenu')?.classList.toggle('active');
+        document.getElementById('audioMenu')?.classList.remove('active');
+    });
+
+    document.getElementById('audioToggle')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById('audioMenu')?.classList.toggle('active');
+        document.getElementById('qualityMenu')?.classList.remove('active');
     });
 
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.quality-selector')) {
             document.getElementById('qualityMenu')?.classList.remove('active');
+            document.getElementById('audioMenu')?.classList.remove('active');
+        }
+    });
+
+    document.getElementById('pipBtn')?.addEventListener('click', async () => {
+        const video = document.getElementById('videoPlayer');
+        if (!video) return;
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            } else if (document.pictureInPictureEnabled) {
+                await video.requestPictureInPicture();
+            }
+        } catch (err) {
+            console.warn('PiP non supporté:', err);
+        }
+    });
+
+    document.getElementById('fullscreenBtn')?.addEventListener('click', () => {
+        const video = document.getElementById('videoPlayer');
+        const container = document.querySelector('.player-container');
+        const target = container || video;
+        if (!target) return;
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        } else if (target.requestFullscreen) {
+            target.requestFullscreen().catch(() => {});
+        } else if (video.webkitEnterFullscreen) {
+            video.webkitEnterFullscreen();
         }
     });
 
