@@ -13,6 +13,7 @@
             <input type="text" id="searchInput" placeholder="🔍 Rechercher...">
         </div>
         <div class="user-actions" style="display:flex;gap:10px;align-items:center;">
+            <button class="btn-xtream-header" id="openXtreamBtn" title="Lecteur Xtream Codes">⚡ Xtream Codes</button>
             <a href="/admin.html" class="btn-refresh" title="Administration" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">⚙️</a>
             <button class="btn-refresh" id="refreshBtn" title="Rafraîchir">🔄</button>
         </div>
@@ -23,6 +24,7 @@
         <button class="filter-btn" data-filter="film">🎥 Films</button>
         <button class="filter-btn" data-filter="serie">📺 Séries</button>
         <button class="filter-btn" data-filter="favorites">⭐ Favoris</button>
+        <button class="filter-btn filter-btn-xtream" id="navXtreamBtn">⚡ Xtream IPTV</button>
         <div class="quality-filters">
             <button class="quality-pill" data-quality="720">720p</button>
             <button class="quality-pill" data-quality="1080">1080p</button>
@@ -37,23 +39,31 @@
             <div class="welcome-content">
                 <div class="welcome-icon">🎬</div>
                 <h1>Bienvenue sur MyStream</h1>
-                <p>Aucun fichier M3U actif. <a href="/admin.html" style="color:#a855f7;">Accédez à l'administration</a> pour importer ou activer une playlist.</p>
-                <button class="btn-retry" id="retryBtn">🔄 Réessayer</button>
+                <p>Aucun fichier M3U actif. Vous pouvez vous connecter via <strong>Xtream Codes</strong> ou importer une playlist.</p>
+                <div style="display:flex;gap:12px;justify-content:center;margin-top:15px;flex-wrap:wrap;">
+                    <button class="btn-xtream-hero" id="heroXtreamBtn">⚡ Ouvrir Xtream Codes</button>
+                    <a href="/admin.html" class="btn-retry" style="text-decoration:none;display:inline-flex;align-items:center;">⚙️ Administration</a>
+                    <button class="btn-retry" id="retryBtn">🔄 Réessayer</button>
+                </div>
             </div>
         </div>
 
         <div class="loading-screen" id="loadingScreen" style="display:none;">
             <div class="spinner"></div>
-            <p>Chargement du catalogue...</p>
+            <p id="loadingMessage">Chargement du catalogue...</p>
         </div>
 
         <div class="content-grid" id="contentGrid" style="display:none;"></div>
     </main>
 
+    <!-- Modal Lecteur Vidéo Principal -->
     <div class="player-modal" id="playerModal">
         <div class="player-container">
             <div class="player-header">
-                <h2 id="playerTitle">Titre</h2>
+                <div class="player-title-info">
+                    <h2 id="playerTitle">Titre</h2>
+                    <span id="playerMetaBadge" class="player-badge">Direct</span>
+                </div>
                 <div class="player-controls">
                     <div class="quality-selector" id="qualitySelector">
                         <button class="quality-btn-player" id="qualityToggle">🎚️ <span id="currentQualityLabel">Auto</span></button>
@@ -63,8 +73,139 @@
                 </div>
             </div>
             <div class="player-wrapper">
-                <video id="videoPlayer" controls autoplay></video>
+                <video id="videoPlayer" controls autoplay playsinline></video>
             </div>
+            <div class="player-footer" id="playerFooter">
+                <span id="streamUrlDisplay" class="stream-url-text"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Portail Xtream Codes Intégré -->
+    <div class="xtream-modal" id="xtreamModal">
+        <div class="xtream-container">
+            <div class="xtream-header">
+                <div class="xtream-header-title">
+                    <h2>⚡ Lecteur Intégré Xtream Codes</h2>
+                    <span class="xtream-tag">IPTV Protocol</span>
+                </div>
+                <button class="close-btn" id="closeXtream">✕</button>
+            </div>
+
+            <div class="xtream-body">
+                <!-- Vue 1: Formulaire de Connexion Xtream -->
+                <div class="xtream-login-view" id="xtreamLoginView">
+                    <div class="xtream-form-card">
+                        <div class="xtream-icon-bubble">⚡</div>
+                        <h3>Connexion à votre abonnement IPTV</h3>
+                        <p class="xtream-form-desc">Renseignez les accès fournis par votre opérateur IPTV pour accéder aux flux directs, VOD et séries.</p>
+
+                        <form id="xtreamLoginForm">
+                            <div class="form-group">
+                                <label for="xtreamServer">Serveur IPTV (URL ou Hôte:Port)</label>
+                                <input type="text" id="xtreamServer" placeholder="Ex: http://mon-serveur-iptv.com:8080" required autocomplete="off">
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="xtreamUser">Identifiant (Username)</label>
+                                    <input type="text" id="xtreamUser" placeholder="Votre nom d'utilisateur" required autocomplete="username">
+                                </div>
+                                <div class="form-group">
+                                    <label for="xtreamPass">Mot de passe (Password)</label>
+                                    <input type="password" id="xtreamPass" placeholder="Votre mot de passe" required autocomplete="current-password">
+                                </div>
+                            </div>
+
+                            <div class="form-options">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="xtreamRemember" checked>
+                                    <span>Mémoriser mes identifiants</span>
+                                </label>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn-xtream-connect" id="xtreamSubmitBtn">
+                                    <span>🚀 Se connecter à Xtream</span>
+                                </button>
+                                <button type="button" class="btn-xtream-demo" id="xtreamDemoBtn">
+                                    <span>🧪 Tester avec des flux démo</span>
+                                </button>
+                            </div>
+
+                            <div class="xtream-status-msg" id="xtreamLoginStatus"></div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Vue 2: Tableau de Bord & Explorateur Xtream -->
+                <div class="xtream-portal-view" id="xtreamPortalView" style="display:none;">
+                    <!-- Barre de compte Xtream -->
+                    <div class="xtream-account-bar">
+                        <div class="account-badge">
+                            <span class="status-dot"></span>
+                            <strong id="accountUsername">Utilisateur</strong>
+                            <span class="account-sep">•</span>
+                            <span id="accountStatus">Actif</span>
+                        </div>
+                        <div class="account-details">
+                            <span title="Date d'expiration" id="accountExp">📅 Exp: --</span>
+                            <span class="account-sep">•</span>
+                            <span title="Connexions autorisées" id="accountCons">🔗 1/1</span>
+                            <span class="account-sep">•</span>
+                            <span title="Serveur" id="accountHost">🌐 Serveur</span>
+                        </div>
+                        <div class="account-actions">
+                            <button class="btn-xtream-import" id="xtreamImportBtn" title="Importer toutes les chaînes dans MyStream">📥 Importer dans MyStream</button>
+                            <button class="btn-xtream-logout" id="xtreamLogoutBtn">Déconnexion</button>
+                        </div>
+                    </div>
+
+                    <!-- Sous-Navigation Xtream -->
+                    <div class="xtream-tabs-bar">
+                        <div class="xtream-type-tabs">
+                            <button class="xtream-tab active" data-type="live">🔴 Direct (Live TV)</button>
+                            <button class="xtream-tab" data-type="vod">🎬 Films (VOD)</button>
+                            <button class="xtream-tab" data-type="series">📺 Séries</button>
+                        </div>
+
+                        <div class="xtream-controls-row">
+                            <div class="xtream-cat-select-wrap">
+                                <select id="xtreamCategorySelect" class="xtream-select">
+                                    <option value="all">📂 Toutes les catégories</option>
+                                </select>
+                            </div>
+                            <div class="xtream-search-wrap">
+                                <input type="text" id="xtreamSearchInput" placeholder="🔍 Filtrer les flux..." class="xtream-search-input">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Liste / Grille de contenu Xtream -->
+                    <div class="xtream-content-area" id="xtreamContentArea">
+                        <div class="xtream-loading" id="xtreamLoading">
+                            <div class="spinner"></div>
+                            <p>Chargement des chaînes...</p>
+                        </div>
+                        <div class="xtream-grid" id="xtreamGrid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Détails Série (Saisons et Épisodes) -->
+    <div class="series-modal" id="seriesModal">
+        <div class="series-container">
+            <div class="series-header">
+                <div class="series-info-header">
+                    <h2 id="seriesTitle">Titre de la Série</h2>
+                    <p id="seriesPlot" class="series-plot-text"></p>
+                </div>
+                <button class="close-btn" id="closeSeries">✕</button>
+            </div>
+            <div class="series-seasons-bar" id="seriesSeasonsBar"></div>
+            <div class="series-episodes-list" id="seriesEpisodesList"></div>
         </div>
     </div>
 

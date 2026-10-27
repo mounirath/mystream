@@ -274,6 +274,367 @@ app.get('/api/m3u/active', (req, res) => {
     });
 });
 
+// ===== API XTREAM CODES =====
+
+function normalizeXtreamUrl(url) {
+    if (!url) return '';
+    let cleaned = url.trim();
+    if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
+        cleaned = 'http://' + cleaned;
+    }
+    return cleaned.replace(/\/+$/, '');
+}
+
+// Données démo Xtream pour tests immédiats sans compte
+const DEMO_XTREAM_DATA = {
+    user_info: {
+        username: "demo_streamer",
+        status: "Active",
+        exp_date: "1893456000", // 2030
+        is_trial: "0",
+        active_cons: "1",
+        max_connections: "2",
+        created_at: "1672531199"
+    },
+    server_info: {
+        url: "demo.mystream.local",
+        port: "8080",
+        https_port: "8443",
+        server_protocol: "https",
+        rtmp_port: "8880",
+        timezone: "Europe/Paris"
+    },
+    live_categories: [
+        { category_id: "1", category_name: "Généraliste & Divertissement" },
+        { category_id: "2", category_name: "Cinéma & Séries" },
+        { category_id: "3", category_name: "Sport & Découverte" }
+    ],
+    live_streams: [
+        {
+            num: 1,
+            name: "Blender TV HD (Live HLS)",
+            stream_type: "live",
+            stream_id: "101",
+            stream_icon: "https://test-streams.mux.dev/test_001/stream.png",
+            epg_channel_id: "blender.tv",
+            category_id: "1",
+            direct_source: "https://test-streams.mux.dev/test_001/stream.m3u8"
+        },
+        {
+            num: 2,
+            name: "Cinema World 4K",
+            stream_type: "live",
+            stream_id: "102",
+            stream_icon: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg",
+            epg_channel_id: "cinema.world",
+            category_id: "2",
+            direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+        },
+        {
+            num: 3,
+            name: "Sport Action Max",
+            stream_type: "live",
+            stream_id: "103",
+            stream_icon: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg",
+            epg_channel_id: "sport.max",
+            category_id: "3",
+            direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+        }
+    ],
+    vod_categories: [
+        { category_id: "10", category_name: "Films Animation" },
+        { category_id: "11", category_name: "Films Sci-Fi & Aventure" }
+    ],
+    vod_streams: [
+        {
+            num: 1,
+            name: "Big Buck Bunny (2008)",
+            stream_type: "movie",
+            stream_id: "201",
+            stream_icon: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
+            rating: "8.5",
+            category_id: "10",
+            container_extension: "mp4",
+            direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+        },
+        {
+            num: 2,
+            name: "Sintel - Durian Project",
+            stream_type: "movie",
+            stream_id: "202",
+            stream_icon: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg",
+            rating: "8.1",
+            category_id: "10",
+            container_extension: "mp4",
+            direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
+        },
+        {
+            num: 3,
+            name: "Tears of Steel 4K",
+            stream_type: "movie",
+            stream_id: "203",
+            stream_icon: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg",
+            rating: "7.9",
+            category_id: "11",
+            container_extension: "mp4",
+            direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+        },
+        {
+            num: 4,
+            name: "Elephants Dream HD",
+            stream_type: "movie",
+            stream_id: "204",
+            stream_icon: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg",
+            rating: "7.2",
+            category_id: "10",
+            container_extension: "mp4",
+            direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
+        }
+    ],
+    series_categories: [
+        { category_id: "20", category_name: "Séries Démo" }
+    ],
+    series: [
+        {
+            num: 1,
+            name: "Open Movie Project",
+            series_id: "301",
+            cover: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
+            plot: "Une série d'animations 3D de renommée mondiale créées par la Blender Foundation.",
+            rating: "9.0",
+            category_id: "20"
+        }
+    ],
+    series_info_301: {
+        seasons: [
+            { air_date: "2023", name: "Saison 1", season_number: 1, episode_count: 2 }
+        ],
+        info: {
+            name: "Open Movie Project",
+            plot: "Une série d'animations 3D de renommée mondiale créées par la Blender Foundation.",
+            cover: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
+            genre: "Animation / Démo",
+            rating: "9.0"
+        },
+        episodes: {
+            "1": [
+                {
+                    id: "401",
+                    episode_num: 1,
+                    title: "Épisode 1 : Big Buck Bunny",
+                    container_extension: "mp4",
+                    direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                    info: { duration: "9:56", plot: "Un grand lapin rencontre des petits animaux de la forêt." }
+                },
+                {
+                    id: "402",
+                    episode_num: 2,
+                    title: "Épisode 2 : Sintel",
+                    container_extension: "mp4",
+                    direct_source: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+                    info: { duration: "14:48", plot: "Une jeune fille part à la recherche de son dragon." }
+                }
+            ]
+        }
+    }
+};
+
+// Route proxy universelle pour l'API Xtream Codes
+app.post('/api/xtream/action', async (req, res) => {
+    try {
+        const { server, username, password, action, params } = req.body;
+        if (!server || !username || !password) {
+            return res.status(400).json({ error: 'Serveur, identifiant et mot de passe requis' });
+        }
+
+        // Mode démo
+        if (server === 'demo' || server.toLowerCase().includes('demo')) {
+            if (!action) {
+                return res.json({
+                    user_info: DEMO_XTREAM_DATA.user_info,
+                    server_info: DEMO_XTREAM_DATA.server_info
+                });
+            }
+            if (action === 'get_live_categories') return res.json(DEMO_XTREAM_DATA.live_categories);
+            if (action === 'get_live_streams') return res.json(DEMO_XTREAM_DATA.live_streams);
+            if (action === 'get_vod_categories') return res.json(DEMO_XTREAM_DATA.vod_categories);
+            if (action === 'get_vod_streams') return res.json(DEMO_XTREAM_DATA.vod_streams);
+            if (action === 'get_series_categories') return res.json(DEMO_XTREAM_DATA.series_categories);
+            if (action === 'get_series') return res.json(DEMO_XTREAM_DATA.series);
+            if (action === 'get_series_info') return res.json(DEMO_XTREAM_DATA.series_info_301);
+            return res.json([]);
+        }
+
+        const baseUrl = normalizeXtreamUrl(server);
+        const url = new URL(`${baseUrl}/player_api.php`);
+        url.searchParams.set('username', username);
+        url.searchParams.set('password', password);
+
+        if (action) {
+            url.searchParams.set('action', action);
+        }
+
+        if (params && typeof params === 'object') {
+            for (const [k, v] of Object.entries(params)) {
+                if (v !== undefined && v !== null) {
+                    url.searchParams.set(k, String(v));
+                }
+            }
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 18000);
+
+        const response = await fetch(url.toString(), {
+            headers: {
+                'User-Agent': 'IPTVSmarters/1.0.0 (Linux; Android 10)',
+                'Accept': 'application/json, text/plain, */*'
+            },
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            return res.status(response.status).json({ error: `Erreur serveur Xtream (${response.status}): ${response.statusText}` });
+        }
+
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error('Erreur Xtream action:', error.message);
+        res.status(500).json({ error: error.message || 'Impossible de contacter le serveur Xtream' });
+    }
+});
+
+// Importation de l'abonnement Xtream en playlist MyStream
+app.post('/api/xtream/import', async (req, res) => {
+    try {
+        const { server, username, password } = req.body;
+        if (!server || !username || !password) {
+            return res.status(400).json({ error: 'Informations Xtream manquantes' });
+        }
+
+        let content = '';
+        let hostDisplay = 'Xtream';
+
+        if (server === 'demo' || server.toLowerCase().includes('demo')) {
+            content = `#EXTM3U
+#EXTINF:-1 tvg-logo="https://test-streams.mux.dev/test_001/stream.png" group-title="Xtream Direct",Blender TV HD (Live HLS)
+https://test-streams.mux.dev/test_001/stream.m3u8
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg" group-title="Xtream Direct",Cinema World 4K
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg" group-title="Xtream Direct",Sport Action Max
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg" group-title="Xtream Films",Big Buck Bunny (2008) [1080p]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg" group-title="Xtream Films",Sintel - Durian Project [1080p]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg" group-title="Xtream Films",Tears of Steel [4K]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+#EXTINF:-1 tvg-logo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg" group-title="Xtream Série - Saison 1",Open Movie - S01E01 [1080p]
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4`;
+            hostDisplay = 'Démo IPTV';
+        } else {
+            const baseUrl = normalizeXtreamUrl(server);
+            hostDisplay = new URL(baseUrl).hostname;
+            const m3uUrl = `${baseUrl}/get.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&type=m3u_plus&output=m3u8`;
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 25000);
+
+            const response = await fetch(m3uUrl, {
+                headers: { 'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18' },
+                signal: controller.signal
+            });
+            clearTimeout(timeout);
+
+            if (!response.ok) {
+                return res.status(response.status).json({ error: 'Le serveur Xtream a refusé le téléchargement de la playlist M3U' });
+            }
+
+            content = await response.text();
+        }
+
+        const itemCount = (content.match(/#EXTINF/g) || []).length;
+        const filename = `xtream-${Date.now()}.m3u`;
+        const filepath = path.join(UPLOADS_DIR, filename);
+        fs.writeFileSync(filepath, content, 'utf-8');
+
+        const store = readStore();
+        store.files.forEach(f => f.is_active = 0);
+
+        const newFile = {
+            id: Date.now().toString(),
+            name: `Xtream (${hostDisplay} - ${username})`,
+            filename: filename,
+            filepath: filepath,
+            is_active: 1,
+            created_at: new Date().toISOString(),
+            item_count: itemCount,
+            itemCount: itemCount,
+            content: content
+        };
+
+        store.files.unshift(newFile);
+        writeStore(store);
+
+        res.json({
+            success: true,
+            id: newFile.id,
+            name: newFile.name,
+            itemCount
+        });
+    } catch (error) {
+        console.error('Erreur import Xtream:', error);
+        res.status(500).json({ error: error.message || 'Erreur lors de l\'import Xtream' });
+    }
+});
+
+// Proxy flux vidéo pour éviter les problèmes de CORS et de Mixed Content (HTTPS -> HTTP)
+app.get('/api/xtream/proxy', async (req, res) => {
+    try {
+        const streamUrl = req.query.url;
+        if (!streamUrl) return res.status(400).send('URL requise');
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+
+        const streamRes = await fetch(streamUrl, {
+            headers: {
+                'User-Agent': 'IPTVSmarters/1.0.0 (Linux; Android 10)'
+            },
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+
+        // Copier les en-têtes pertinents
+        const contentType = streamRes.headers.get('content-type');
+        if (contentType) res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+
+        if (!streamRes.body) {
+            return res.status(500).send('Flux indisponible');
+        }
+
+        const nodeReadable = streamRes.body;
+        if (typeof nodeReadable.pipe === 'function') {
+            nodeReadable.pipe(res);
+        } else {
+            // Web ReadableStream
+            const reader = nodeReadable.getReader();
+            const pump = async () => {
+                const { done, value } = await reader.read();
+                if (done) return res.end();
+                res.write(value);
+                await pump();
+            };
+            pump().catch(() => res.end());
+        }
+    } catch (error) {
+        res.status(500).send('Erreur proxy stream: ' + error.message);
+    }
+});
+
 // Fallback routes pour l'interface admin et accueil
 app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));

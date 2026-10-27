@@ -5,11 +5,34 @@ let currentQuality = null;
 let favorites = JSON.parse(localStorage.getItem('mystream_favs') || '[]');
 let hlsInstance = null;
 
-// Charger le M3U actif depuis le backend
+// État Xtream Codes
+let xtreamState = {
+    server: '',
+    username: '',
+    password: '',
+    userInfo: null,
+    serverInfo: null,
+    activeType: 'live', // 'live', 'vod', 'series'
+    categories: [],
+    streams: [],
+    selectedCategory: 'all',
+    searchQuery: '',
+    currentSeriesInfo: null,
+    activeSeason: 1
+};
+
+// ==========================================
+// M3U & Catalogue Principal
+// ==========================================
+
 async function loadActiveM3U() {
     try {
-        document.getElementById('welcomeScreen').style.display = 'none';
-        document.getElementById('loadingScreen').style.display = 'flex';
+        const loadingScreen = document.getElementById('loadingScreen');
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        const contentGrid = document.getElementById('contentGrid');
+
+        if (welcomeScreen) welcomeScreen.style.display = 'none';
+        if (loadingScreen) loadingScreen.style.display = 'flex';
         
         const response = await fetch('/api/m3u/active');
         
@@ -22,19 +45,20 @@ async function loadActiveM3U() {
         
         console.log(`✅ ${allItems.length} éléments chargés depuis ${data.name}`);
         
-        document.getElementById('loadingScreen').style.display = 'none';
-        document.getElementById('contentGrid').style.display = 'grid';
+        if (loadingScreen) loadingScreen.style.display = 'none';
+        if (contentGrid) contentGrid.style.display = 'grid';
         
         renderContent();
         renderGroups();
     } catch (error) {
-        document.getElementById('loadingScreen').style.display = 'none';
-        document.getElementById('welcomeScreen').style.display = 'flex';
-        console.error('Erreur:', error);
+        if (document.getElementById('loadingScreen')) document.getElementById('loadingScreen').style.display = 'none';
+        if (document.getElementById('welcomeScreen')) document.getElementById('welcomeScreen').style.display = 'flex';
+        console.error('Erreur chargement M3U:', error);
     }
 }
 
 function parseM3U(content) {
+    if (!content) return [];
     const lines = content.split('\n').map(l => l.trim()).filter(l => l);
     const items = [];
     let currentItem = null;
@@ -80,12 +104,14 @@ function qualityLabel(q) {
 }
 
 function cleanTitle(title) {
+    if (!title) return '';
     return title.replace(/\[.*?\]/g, '').replace(/\b(FHD|HD|4K|UHD)\b/gi, '').replace(/\s+/g, ' ').trim();
 }
 
 function renderContent() {
     const grid = document.getElementById('contentGrid');
-    const search = document.getElementById('searchInput').value.toLowerCase();
+    if (!grid) return;
+    const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
     
     let filtered = allItems;
     
@@ -96,7 +122,7 @@ function renderContent() {
     if (currentGroup) filtered = filtered.filter(i => i.group === currentGroup);
     if (currentQuality) filtered = filtered.filter(i => i.quality === currentQuality);
     if (search) filtered = filtered.filter(i => 
-        i.title.toLowerCase().includes(search) || i.group.toLowerCase().includes(search)
+        i.title.toLowerCase().includes(search) || (i.group && i.group.toLowerCase().includes(search))
     );
 
     if (filtered.length === 0) {
@@ -126,14 +152,15 @@ function renderContent() {
             if (e.target.classList.contains('card-fav')) return;
             const url = decodeURIComponent(card.dataset.url);
             const item = allItems.find(i => i.url === url);
-            playItem(item);
+            if (item) playItem(item);
         });
     });
 }
 
 function renderGroups() {
-    const groups = [...new Set(allItems.map(i => i.group).filter(g => g))];
     const bar = document.getElementById('groupsBar');
+    if (!bar) return;
+    const groups = [...new Set(allItems.map(i => i.group).filter(g => g))];
     bar.innerHTML = groups.map(g => `<span class="group-chip" data-group="${g}">${g}</span>`).join('');
     
     bar.querySelectorAll('.group-chip').forEach(chip => {
@@ -164,35 +191,75 @@ function toggleFavorite(e, encodedUrl) {
     renderContent();
 }
 
-function playItem(item) {
+// ==========================================
+// Lecteur Vidéo Intégré (HLS & Direct)
+// ==========================================
+
+function playItem(item, badgeText = '') {
     const modal = document.getElementById('playerModal');
     const video = document.getElementById('videoPlayer');
-    document.getElementById('playerTitle').textContent = item.title;
+    const titleEl = document.getElementById('playerTitle');
+    const badgeEl = document.getElementById('playerMetaBadge');
+    const urlEl = document.getElementById('streamUrlDisplay');
+
+    if (titleEl) titleEl.textContent = item.title;
+    if (badgeEl) {
+        badgeEl.textContent = badgeText || (item.type === 'serie' ? 'Série' : (item.quality ? qualityLabel(item.quality) : 'Lecture'));
+    }
+    if (urlEl) urlEl.textContent = item.url;
     
     modal.classList.add('active');
     
-    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
 
     const url = item.url;
     const isHLS = url.includes('.m3u8') || url.includes('m3u8');
     
     if (isHLS && Hls.isSupported()) {
-        hlsInstance = new Hls();
+        hlsInstance = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 90
+        });
         hlsInstance.loadSource(url);
         hlsInstance.attachMedia(video);
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-            video.play();
+            video.play().catch(e => console.warn('Autoplay bloqué:', e));
             loadHLSQualities();
+        });
+        hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+                switch(data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.warn('Erreur réseau HLS, tentative de récupération...');
+                        hlsInstance.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.warn('Erreur média HLS, récupération...');
+                        hlsInstance.recoverMediaError();
+                        break;
+                    default:
+                        hlsInstance.destroy();
+                        video.src = url;
+                        break;
+                }
+            }
         });
     } else {
         video.src = url;
+        video.play().catch(e => console.warn('Autoplay bloqué:', e));
     }
 }
 
 function loadHLSQualities() {
     if (!hlsInstance) return;
-    const levels = hlsInstance.levels;
+    const levels = hlsInstance.levels || [];
     const menu = document.getElementById('qualityMenu');
+    if (!menu) return;
+
     menu.innerHTML = `
         <div class="quality-option selected" data-level="-1">⚡ Auto</div>
         ${levels.map((level, idx) => `
@@ -207,6 +274,8 @@ function loadHLSQualities() {
             hlsInstance.currentLevel = parseInt(opt.dataset.level);
             menu.querySelectorAll('.quality-option').forEach(o => o.classList.remove('selected'));
             opt.classList.add('selected');
+            const label = document.getElementById('currentQualityLabel');
+            if (label) label.textContent = opt.textContent.replace('📺 ', '').replace('⚡ ', '');
         });
     });
 }
@@ -214,59 +283,570 @@ function loadHLSQualities() {
 function closePlayer() {
     document.getElementById('playerModal').classList.remove('active');
     const video = document.getElementById('videoPlayer');
-    video.pause();
-    video.src = '';
-    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    if (video) {
+        video.pause();
+        video.src = '';
+    }
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
 }
 
-// Événements
-document.getElementById('refreshBtn').addEventListener('click', loadActiveM3U);
-document.getElementById('retryBtn').addEventListener('click', loadActiveM3U);
-document.getElementById('searchInput').addEventListener('input', renderContent);
+// ==========================================
+// Moteur Xtream Codes
+// ==========================================
 
-document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentFilter = btn.dataset.filter;
-        renderContent();
-    });
-});
+function openXtreamModal() {
+    const modal = document.getElementById('xtreamModal');
+    if (!modal) return;
+    modal.classList.add('active');
 
-document.querySelectorAll('.quality-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const q = parseInt(btn.dataset.quality);
-        if (currentQuality === q) {
-            currentQuality = null;
-            btn.classList.remove('active');
-        } else {
-            currentQuality = q;
-            document.querySelectorAll('.quality-pill').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        }
-        renderContent();
-    });
-});
-
-document.getElementById('qualityToggle').addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.getElementById('qualityMenu').classList.toggle('active');
-});
-
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('.quality-selector')) {
-        document.getElementById('qualityMenu').classList.remove('active');
+    // Vérifier si des identifiants sont déjà mémorisés
+    const saved = localStorage.getItem('mystream_xtream');
+    if (saved && !xtreamState.userInfo) {
+        try {
+            const parsed = JSON.parse(saved);
+            document.getElementById('xtreamServer').value = parsed.server || '';
+            document.getElementById('xtreamUser').value = parsed.username || '';
+            document.getElementById('xtreamPass').value = parsed.password || '';
+            connectXtream(parsed.server, parsed.username, parsed.password, true);
+            return;
+        } catch {}
     }
-});
 
-document.getElementById('closePlayer').addEventListener('click', closePlayer);
-document.getElementById('playerModal').addEventListener('click', (e) => {
-    if (e.target.id === 'playerModal') closePlayer();
-});
+    if (xtreamState.userInfo) {
+        showXtreamPortalView();
+    } else {
+        showXtreamLoginView();
+    }
+}
 
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closePlayer();
-});
+function closeXtreamModal() {
+    const modal = document.getElementById('xtreamModal');
+    if (modal) modal.classList.remove('active');
+}
 
-// Charger au démarrage
-loadActiveM3U();
+function showXtreamLoginView() {
+    document.getElementById('xtreamLoginView').style.display = 'flex';
+    document.getElementById('xtreamPortalView').style.display = 'none';
+}
+
+function showXtreamPortalView() {
+    document.getElementById('xtreamLoginView').style.display = 'none';
+    document.getElementById('xtreamPortalView').style.display = 'flex';
+    updateXtreamAccountBar();
+    loadXtreamData(xtreamState.activeType);
+}
+
+function showXtreamLoginStatus(message, type = '') {
+    const el = document.getElementById('xtreamLoginStatus');
+    if (!el) return;
+    el.textContent = message;
+    el.className = 'xtream-status-msg' + (type ? ' ' + type : '');
+    el.style.display = message ? 'block' : 'none';
+}
+
+// Appel proxy vers l'API Xtream
+async function callXtreamApi(action, params = {}) {
+    const response = await fetch('/api/xtream/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            server: xtreamState.server,
+            username: xtreamState.username,
+            password: xtreamState.password,
+            action,
+            params
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Erreur serveur (${response.status})`);
+    }
+
+    return await response.json();
+}
+
+async function connectXtream(server, username, password, remember = true) {
+    try {
+        showXtreamLoginStatus('Connexion et vérification de l\'abonnement...', '');
+        const submitBtn = document.getElementById('xtreamSubmitBtn');
+        if (submitBtn) submitBtn.disabled = true;
+
+        xtreamState.server = server;
+        xtreamState.username = username;
+        xtreamState.password = password;
+
+        // Appel d'authentification initial (player_api.php sans action)
+        const data = await callXtreamApi(null);
+
+        if (!data || (!data.user_info && !data.server_info)) {
+            throw new Error('Identifiants ou URL de serveur Xtream invalides');
+        }
+
+        if (data.user_info && data.user_info.auth === 0) {
+            throw new Error('Identifiants Xtream incorrects');
+        }
+
+        xtreamState.userInfo = data.user_info || {};
+        xtreamState.serverInfo = data.server_info || {};
+
+        if (remember) {
+            localStorage.setItem('mystream_xtream', JSON.stringify({ server, username, password }));
+        } else {
+            localStorage.removeItem('mystream_xtream');
+        }
+
+        showXtreamLoginStatus('Connexion réussie ! Chargement...', 'success');
+        setTimeout(() => {
+            showXtreamPortalView();
+        }, 500);
+
+    } catch (error) {
+        showXtreamLoginStatus(`❌ ${error.message}`, 'error');
+    } finally {
+        const submitBtn = document.getElementById('xtreamSubmitBtn');
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+function updateXtreamAccountBar() {
+    const user = xtreamState.userInfo || {};
+    const server = xtreamState.serverInfo || {};
+
+    document.getElementById('accountUsername').textContent = user.username || xtreamState.username || 'Utilisateur';
+    document.getElementById('accountStatus').textContent = user.status || 'Connecté';
+
+    let expText = 'Illimité';
+    if (user.exp_date && user.exp_date !== 'null') {
+        const d = new Date(parseInt(user.exp_date) * 1000);
+        expText = isNaN(d.getTime()) ? user.exp_date : d.toLocaleDateString('fr-FR');
+    }
+    document.getElementById('accountExp').textContent = `📅 Exp: ${expText}`;
+    document.getElementById('accountCons').textContent = `🔗 ${user.active_cons || 1}/${user.max_connections || 1} cons`;
+
+    let hostDisplay = xtreamState.server;
+    try {
+        if (!hostDisplay.startsWith('http')) hostDisplay = 'http://' + hostDisplay;
+        hostDisplay = new URL(hostDisplay).hostname;
+    } catch {}
+    document.getElementById('accountHost').textContent = `🌐 ${hostDisplay}`;
+}
+
+async function loadXtreamData(type) {
+    xtreamState.activeType = type;
+    const loadingEl = document.getElementById('xtreamLoading');
+    const gridEl = document.getElementById('xtreamGrid');
+    
+    if (loadingEl) {
+        loadingEl.style.display = 'flex';
+        loadingEl.querySelector('p').textContent = `Chargement des ${type === 'live' ? 'chaînes en direct' : (type === 'vod' ? 'films VOD' : 'séries')}...`;
+    }
+    if (gridEl) gridEl.innerHTML = '';
+
+    try {
+        let catAction = 'get_live_categories';
+        let streamAction = 'get_live_streams';
+
+        if (type === 'vod') {
+            catAction = 'get_vod_categories';
+            streamAction = 'get_vod_streams';
+        } else if (type === 'series') {
+            catAction = 'get_series_categories';
+            streamAction = 'get_series';
+        }
+
+        // Charger catégories et flux en parallèle
+        const [categories, streams] = await Promise.all([
+            callXtreamApi(catAction).catch(() => []),
+            callXtreamApi(streamAction).catch(() => [])
+        ]);
+
+        xtreamState.categories = Array.isArray(categories) ? categories : [];
+        xtreamState.streams = Array.isArray(streams) ? streams : [];
+
+        renderXtreamCategoriesSelect();
+        renderXtreamGrid();
+
+    } catch (error) {
+        if (gridEl) gridEl.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;">❌ Erreur: ${error.message}</div>`;
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
+function renderXtreamCategoriesSelect() {
+    const select = document.getElementById('xtreamCategorySelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="all">📂 Toutes les catégories</option>' +
+        xtreamState.categories.map(c => `
+            <option value="${c.category_id}">${c.category_name}</option>
+        `).join('');
+
+    select.value = 'all';
+    xtreamState.selectedCategory = 'all';
+}
+
+function buildXtreamStreamUrl(stream, type) {
+    if (stream.direct_source) return stream.direct_source;
+
+    let base = xtreamState.server.trim();
+    if (!base.startsWith('http://') && !base.startsWith('https://')) base = 'http://' + base;
+    base = base.replace(/\/+$/, '');
+
+    const u = encodeURIComponent(xtreamState.username);
+    const p = encodeURIComponent(xtreamState.password);
+
+    if (type === 'live') {
+        return `${base}/live/${u}/${p}/${stream.stream_id}.m3u8`;
+    } else if (type === 'vod') {
+        const ext = stream.container_extension || 'mp4';
+        return `${base}/movie/${u}/${p}/${stream.stream_id}.${ext}`;
+    }
+    return '';
+}
+
+function renderXtreamGrid() {
+    const grid = document.getElementById('xtreamGrid');
+    if (!grid) return;
+
+    const catId = xtreamState.selectedCategory;
+    const query = xtreamState.searchQuery.toLowerCase();
+    const type = xtreamState.activeType;
+
+    let list = xtreamState.streams;
+
+    if (catId && catId !== 'all') {
+        list = list.filter(item => String(item.category_id) === String(catId));
+    }
+
+    if (query) {
+        list = list.filter(item => (item.name || '').toLowerCase().includes(query));
+    }
+
+    if (list.length === 0) {
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px;color:#64748b;"><h3>Aucun flux trouvé</h3></div>';
+        return;
+    }
+
+    grid.innerHTML = list.map(item => {
+        const title = item.name || 'Sans titre';
+        const poster = item.stream_icon || item.cover || '';
+        const badgeLabel = type === 'live' ? 'DIRECT' : (type === 'vod' ? 'FILM' : 'SÉRIE');
+        const badgeClass = type === 'live' ? 'badge-live' : (type === 'vod' ? 'badge-vod' : 'badge-series');
+        const isPortrait = type !== 'live';
+
+        return `
+            <div class="xtream-card" data-id="${item.stream_id || item.series_id}">
+                <div class="xtream-card-poster ${isPortrait ? 'poster-portrait' : ''}">
+                    ${poster ? `<img src="${poster}" onerror="this.parentElement.innerHTML='🎬'" loading="lazy" alt="">` : '🎬'}
+                    <span class="xtream-card-badge ${badgeClass}">${badgeLabel}</span>
+                    <div class="xtream-card-play-overlay">▶</div>
+                </div>
+                <div class="xtream-card-body">
+                    <div class="xtream-card-title">${title}</div>
+                    <div class="xtream-card-sub">${type === 'series' ? 'Série & Épisodes' : (item.container_extension ? item.container_extension.toUpperCase() : 'Flux')}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    grid.querySelectorAll('.xtream-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const id = card.dataset.id;
+            const item = xtreamState.streams.find(s => String(s.stream_id || s.series_id) === id);
+            if (!item) return;
+
+            if (type === 'series') {
+                openSeriesDetails(item);
+            } else {
+                const streamUrl = buildXtreamStreamUrl(item, type);
+                playItem({
+                    title: item.name,
+                    url: streamUrl,
+                    type: type === 'live' ? 'live' : 'film'
+                }, type === 'live' ? '🔴 Direct' : '🎬 VOD Xtream');
+            }
+        });
+    });
+}
+
+// Détails des Séries (Saisons et Épisodes)
+async function openSeriesDetails(series) {
+    const modal = document.getElementById('seriesModal');
+    const titleEl = document.getElementById('seriesTitle');
+    const plotEl = document.getElementById('seriesPlot');
+    const seasonsBar = document.getElementById('seriesSeasonsBar');
+    const listEl = document.getElementById('seriesEpisodesList');
+
+    if (titleEl) titleEl.textContent = series.name;
+    if (plotEl) plotEl.textContent = series.plot || 'Sélectionnez un épisode pour lancer la lecture.';
+    if (seasonsBar) seasonsBar.innerHTML = '<span style="color:#64748b;font-size:12px;">Chargement des saisons...</span>';
+    if (listEl) listEl.innerHTML = '<div class="spinner"></div>';
+    
+    modal.classList.add('active');
+
+    try {
+        const seriesData = await callXtreamApi('get_series_info', { series_id: series.series_id });
+        xtreamState.currentSeriesInfo = seriesData;
+
+        const seasons = seriesData.seasons || [];
+        const episodesObj = seriesData.episodes || {};
+
+        if (seasons.length === 0) {
+            // Créer une saison par défaut si absent
+            seasons.push({ season_number: 1, name: 'Saison 1' });
+        }
+
+        xtreamState.activeSeason = seasons[0].season_number;
+
+        seasonsBar.innerHTML = seasons.map((s, idx) => `
+            <button class="season-tab ${idx === 0 ? 'active' : ''}" data-season="${s.season_number}">
+                ${s.name || 'Saison ' + s.season_number}
+            </button>
+        `).join('');
+
+        seasonsBar.querySelectorAll('.season-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                seasonsBar.querySelectorAll('.season-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                xtreamState.activeSeason = parseInt(tab.dataset.season);
+                renderSeriesEpisodes(episodesObj, series.name);
+            });
+        });
+
+        renderSeriesEpisodes(episodesObj, series.name);
+
+    } catch (error) {
+        listEl.innerHTML = `<div style="text-align:center;color:#ef4444;padding:20px;">Erreur de chargement: ${error.message}</div>`;
+    }
+}
+
+function renderSeriesEpisodes(episodesObj, seriesName) {
+    const listEl = document.getElementById('seriesEpisodesList');
+    if (!listEl) return;
+
+    const seasonNum = xtreamState.activeSeason;
+    const episodes = episodesObj[String(seasonNum)] || episodesObj[seasonNum] || [];
+
+    if (!Array.isArray(episodes) || episodes.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center;color:#64748b;padding:30px;">Aucun épisode disponible pour cette saison.</div>';
+        return;
+    }
+
+    listEl.innerHTML = episodes.map(ep => {
+        const epNum = ep.episode_num || ep.episodeNumber || 1;
+        const title = ep.title || `Épisode ${epNum}`;
+        const duration = ep.info?.duration || '';
+        const desc = ep.info?.plot || '';
+
+        return `
+            <div class="episode-item" data-id="${ep.id}">
+                <div class="episode-info">
+                    <h4>${title}</h4>
+                    <p>${duration ? '⏱️ ' + duration : ''} ${desc ? '• ' + desc : ''}</p>
+                </div>
+                <button class="btn-play-episode">▶ Lire</button>
+            </div>
+        `;
+    }).join('');
+
+    listEl.querySelectorAll('.episode-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = item.dataset.id;
+            const ep = episodes.find(e => String(e.id) === id);
+            if (!ep) return;
+
+            let epUrl = ep.direct_source;
+            if (!epUrl) {
+                let base = xtreamState.server.trim();
+                if (!base.startsWith('http://') && !base.startsWith('https://')) base = 'http://' + base;
+                base = base.replace(/\/+$/, '');
+                const u = encodeURIComponent(xtreamState.username);
+                const p = encodeURIComponent(xtreamState.password);
+                const ext = ep.container_extension || 'mp4';
+                epUrl = `${base}/series/${u}/${p}/${ep.id}.${ext}`;
+            }
+
+            playItem({
+                title: `${seriesName} - ${ep.title || 'Épisode ' + ep.episode_num}`,
+                url: epUrl,
+                type: 'serie'
+            }, `📺 S${seasonNum} : E${ep.episode_num || 1}`);
+        });
+    });
+}
+
+function closeSeriesModal() {
+    const modal = document.getElementById('seriesModal');
+    if (modal) modal.classList.remove('active');
+}
+
+// Importer la playlist Xtream dans le catalogue actif de MyStream
+async function importXtreamToMyStream() {
+    const btn = document.getElementById('xtreamImportBtn');
+    if (!btn) return;
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Importation...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/xtream/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                server: xtreamState.server,
+                username: xtreamState.username,
+                password: xtreamState.password
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            alert(`✅ Succès ! ${data.itemCount} flux Xtream ont été importés dans MyStream.`);
+            closeXtreamModal();
+            await loadActiveM3U();
+        } else {
+            alert(`❌ Erreur: ${data.error || 'Échec de l\'importation'}`);
+        }
+    } catch (e) {
+        alert(`❌ Erreur: ${e.message}`);
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
+}
+
+function disconnectXtream() {
+    xtreamState.userInfo = null;
+    xtreamState.serverInfo = null;
+    xtreamState.streams = [];
+    xtreamState.categories = [];
+    localStorage.removeItem('mystream_xtream');
+    showXtreamLoginView();
+    showXtreamLoginStatus('Déconnecté avec succès', 'success');
+}
+
+// ==========================================
+// Initialisation & Événements
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Boutons de navigation et filtres
+    document.getElementById('refreshBtn')?.addEventListener('click', loadActiveM3U);
+    document.getElementById('retryBtn')?.addEventListener('click', loadActiveM3U);
+    document.getElementById('searchInput')?.addEventListener('input', renderContent);
+
+    document.querySelectorAll('.filter-btn:not(.filter-btn-xtream)').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentFilter = btn.dataset.filter;
+            renderContent();
+        });
+    });
+
+    document.querySelectorAll('.quality-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const q = parseInt(btn.dataset.quality);
+            if (currentQuality === q) {
+                currentQuality = null;
+                btn.classList.remove('active');
+            } else {
+                currentQuality = q;
+                document.querySelectorAll('.quality-pill').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+            renderContent();
+        });
+    });
+
+    // Contrôles Lecteur Vidéo
+    document.getElementById('qualityToggle')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById('qualityMenu')?.classList.toggle('active');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.quality-selector')) {
+            document.getElementById('qualityMenu')?.classList.remove('active');
+        }
+    });
+
+    document.getElementById('closePlayer')?.addEventListener('click', closePlayer);
+    document.getElementById('playerModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'playerModal') closePlayer();
+    });
+
+    document.getElementById('closeSeries')?.addEventListener('click', closeSeriesModal);
+    document.getElementById('seriesModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'seriesModal') closeSeriesModal();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closePlayer();
+            closeSeriesModal();
+            closeXtreamModal();
+        }
+    });
+
+    // Boutons d'accès Xtream
+    document.getElementById('openXtreamBtn')?.addEventListener('click', openXtreamModal);
+    document.getElementById('navXtreamBtn')?.addEventListener('click', openXtreamModal);
+    document.getElementById('heroXtreamBtn')?.addEventListener('click', openXtreamModal);
+    document.getElementById('closeXtream')?.addEventListener('click', closeXtreamModal);
+    document.getElementById('xtreamModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'xtreamModal') closeXtreamModal();
+    });
+
+    // Formulaire de connexion Xtream
+    document.getElementById('xtreamLoginForm')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const server = document.getElementById('xtreamServer').value.trim();
+        const user = document.getElementById('xtreamUser').value.trim();
+        const pass = document.getElementById('xtreamPass').value.trim();
+        const remember = document.getElementById('xtreamRemember').checked;
+        connectXtream(server, user, pass, remember);
+    });
+
+    // Bouton de démonstration Xtream
+    document.getElementById('xtreamDemoBtn')?.addEventListener('click', () => {
+        document.getElementById('xtreamServer').value = 'http://demo.mystream.local:8080';
+        document.getElementById('xtreamUser').value = 'demo_streamer';
+        document.getElementById('xtreamPass').value = 'demo123';
+        connectXtream('demo', 'demo_streamer', 'demo123', true);
+    });
+
+    // Déconnexion et import Xtream
+    document.getElementById('xtreamLogoutBtn')?.addEventListener('click', disconnectXtream);
+    document.getElementById('xtreamImportBtn')?.addEventListener('click', importXtreamToMyStream);
+
+    // Onglets de type Xtream (Direct, VOD, Séries)
+    document.querySelectorAll('.xtream-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.xtream-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            loadXtreamData(tab.dataset.type);
+        });
+    });
+
+    // Filtre de catégorie Xtream
+    document.getElementById('xtreamCategorySelect')?.addEventListener('change', (e) => {
+        xtreamState.selectedCategory = e.target.value;
+        renderXtreamGrid();
+    });
+
+    // Recherche Xtream
+    document.getElementById('xtreamSearchInput')?.addEventListener('input', (e) => {
+        xtreamState.searchQuery = e.target.value;
+        renderXtreamGrid();
+    });
+
+    // Chargement initial du catalogue M3U
+    loadActiveM3U();
+});
